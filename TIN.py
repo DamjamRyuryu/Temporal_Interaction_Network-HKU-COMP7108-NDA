@@ -4,7 +4,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from collections import defaultdict
 import os
-import time
+import time as t
 import random
 
 class TemporalInteractionNetwork:
@@ -15,29 +15,21 @@ class TemporalInteractionNetwork:
         self.interactions = []  # 交互列表（源，目标，时间，流量）
         self.graph = nx.DiGraph()  # 有向图表示
         
-    def load_from_file(self, file_path, max_interactions=None):
+    def load_from_file(self, file_path='tin_graph.txt'):
         """从文件加载TIN数据
         
         参数:
             file_path: TIN数据文件路径
-            max_interactions: 最大加载交互数，None表示加载全部
         """
-        print(f"从{file_path}加载数据...")
-        start_time = time.time()
+        print(f"Loading TIN data from {file_path}...")
+        start_time = t.time()
         
         # 首先读取前两行获取节点数和交互数
         with open(file_path, 'r') as f:
             num_nodes = int(f.readline().strip())
             num_interactions = int(f.readline().strip())
             
-            print(f"文件包含 {num_nodes} 个节点和 {num_interactions} 个交互")
-            
-            # 如果指定了最大交互数，则进行限制
-            if max_interactions and max_interactions < num_interactions:
-                print(f"将只加载前 {max_interactions} 个交互")
-                interactions_to_read = max_interactions
-            else:
-                interactions_to_read = num_interactions
+            print(f"This TIN contains {num_nodes} nodes and {num_interactions} interactions.")
             
             # 逐行读取交互数据
             counter = 0
@@ -47,7 +39,7 @@ class TemporalInteractionNetwork:
                     
                 parts = line.strip().split('\t')
                 if len(parts) < 4:
-                    print(f"警告: 跳过无效行: {line}")
+                    print(f"Warning: skipping an invalid line: {line}")
                     continue
                     
                 source, dest, time, flow = map(int, parts[:4])
@@ -63,16 +55,12 @@ class TemporalInteractionNetwork:
                 self.graph[source][dest]['interactions'].append((time, flow))
                 
                 counter += 1
-                if counter % 1000000 == 0:
-                    print(f"已加载 {counter} 个交互...")
-                
-                # 如果达到最大读取数量，跳出循环
-                if counter >= interactions_to_read:
-                    break
+                if counter % 100000 == 0:
+                    print(f"{counter} interactions loaded.")
         
-        end_time = time.time()
-        print(f"加载完成。耗时: {end_time - start_time:.2f} 秒")
-        print(f"节点数: {len(self.nodes)}, 边数: {len(self.edges)}, 加载的交互数: {len(self.interactions)}")
+        end_time = t.time()
+        print(f"Loading complete. Time elapsed : {end_time - start_time:.2f} seconds")
+        print(f"Nodes: {len(self.nodes)}, Edges: {len(self.edges)}, Interactions: {len(self.interactions)}")
     
     def create_from_taxi_data(self, taxi_data_path, process_all=True):
         """从出租车数据创建TIN
@@ -113,7 +101,7 @@ class TemporalInteractionNetwork:
             重复模式字典
         """
         print(f"查找重复模式 (时间窗口: {time_window}秒)...")
-        start_time = time.time()
+        start_time = t.time()
         
         # 如果数据很大，可以选择采样
         interactions_to_analyze = self.interactions
@@ -174,7 +162,7 @@ class TemporalInteractionNetwork:
             源节点及其贡献的字典
         """
         print(f"追踪到节点 {target_node} 的数量来源...")
-        start_time = time.time()
+        start_time = t.time()
         
         # 如果数据很大，可以选择采样
         interactions_to_analyze = self.interactions
@@ -226,7 +214,7 @@ class TemporalInteractionNetwork:
             output_file: 输出图像文件名
         """
         print("准备可视化网络...")
-        start_time = time.time()
+        start_time = t.time()
         
         # 创建一个新图，边的权重为交互次数
         G = nx.DiGraph()
@@ -305,7 +293,7 @@ class TemporalInteractionNetwork:
         print(f"保存图像到 {output_file}...")
         plt.savefig(output_file, dpi=300, bbox_inches='tight')
         
-        end_time = time.time()
+        end_time = t.time()
         print(f"可视化完成。耗时: {end_time - start_time:.2f} 秒")
 
 
