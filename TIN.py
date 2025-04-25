@@ -1,5 +1,3 @@
-import pandas as pd
-import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 from collections import defaultdict
@@ -60,20 +58,26 @@ class TemporalInteractionNetwork:
         
         end_time = t.time()
         print(f"Loading complete. Time elapsed : {end_time - start_time:.2f} seconds")
-        print(f"Nodes: {len(self.nodes)}, Edges: {len(self.edges)}, Interactions: {len(self.interactions)}")
+        # print(f"Nodes: {len(self.nodes)}, Edges: {len(self.edges)}, Interactions: {len(self.interactions)}")
     
-    def create_from_taxi_data(self, taxi_data_path, process_all=True):
+    def create_from_taxi_data(self, taxi_data_path="yellow_taxi.csv"):
         """从出租车数据创建TIN
         
         参数:
             taxi_data_path: 出租车数据文件路径
-            process_all: 是否处理全部数据，True表示处理全部，False表示处理前100,000条
         """
         # 如果预处理后的文件已存在，则直接加载
-        if os.path.exists('tin_output.txt'):
-            print("发现已有TIN输出文件，直接加载...")
-            self.load_from_file('tin_output.txt')
+        if os.path.exists('tin_graph.txt'):
+            print("Existing file found.")
+            self.load_from_file('tin_graph.txt')
             return
+        
+        import subprocess
+        print("Preprocessing data...")
+        subprocess.run(['python', 'preprocess_taxi_data.py'])
+        
+        # 加载预处理后的数据
+        self.load_from_file('tin_graph.txt')
         
     
     def get_statistics(self):
@@ -84,10 +88,10 @@ class TemporalInteractionNetwork:
         
         # 构建统计信息字典
         stats = {
-            "节点数量": len(self.nodes),
-            "边数量": len(self.edges),
-            "交互数量": len(self.interactions),
-            "每次行程的平均乘客数": avg_passengers
+            "Nodes": len(self.nodes),
+            "Edges": len(self.edges),
+            "Interactions": len(self.interactions),
+            "Avg_pax": avg_passengers
         }
         return stats
     
@@ -301,23 +305,24 @@ if __name__ == "__main__":
     # 创建TIN实例
     tin = TemporalInteractionNetwork()
     
-    # 从出租车数据创建TIN
-    # 参数process_all=True表示处理全部数据，False表示仅处理前100,000条
-    print("您希望处理全部数据还是仅处理部分数据?")
-    print("1. 处理全部数据 (可能需要较长时间)")
-    print("2. 只处理前100,000条数据 (更快)")
+    # # 从出租车数据创建TIN
+    # # 参数process_all=True表示处理全部数据，False表示仅处理前100,000条
+    # print("您希望处理全部数据还是仅处理部分数据?")
+    # print("1. 处理全部数据 (可能需要较长时间)")
+    # print("2. 只处理前100,000条数据 (更快)")
+    #
+    # choice = input("请输入选项 (1 或 2): ").strip()
+    # process_all = (choice == '1')
     
-    choice = input("请输入选项 (1 或 2): ").strip()
-    process_all = (choice == '1')
-    
-    tin.create_from_taxi_data('yellow_taxi.csv', process_all=process_all)
+    tin.create_from_taxi_data('yellow_taxi.csv')
     
     # 输出统计信息
     stats = tin.get_statistics()
-    print("\n网络统计信息:")
+    print("\nNetwork statistics:")
     for key, value in stats.items():
         print(f"{key}: {value:.2f}" if isinstance(value, float) else f"{key}: {value}")
-    
+
+    raise NotImplementedError("Following processes not verified, terminating.")
     # 查找重复模式
     # 如果数据量很大，可以用采样来加快处理速度
     sample_size = 1000000 if len(tin.interactions) > 1000000 else None
@@ -348,7 +353,7 @@ if __name__ == "__main__":
             print(f"节点 {source}: {amount} 单位")
     
     # 可视化网络
-    print("\n正在可视化网络...")
+    print("\nVisualizing (part of) the network...")
     tin.visualize(max_edges=500)  # 限制最大显示的边数
     
-    print("\n完成!")
+    print("\nDone!")
