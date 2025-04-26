@@ -430,18 +430,22 @@ class TemporalInteractionNetwork:
 if __name__ == "__main__":
     # 创建TIN实例
     tin = TemporalInteractionNetwork()
-    tin.create_from_taxi_data('graph.txt')
+    choice = input("Which data do you want to use?\n1:test file (graph.txt) <DEFAULT>\n2:part of the taxi csv (tin_graph.txt)\n[(1)/2]=>")
+    tin.create_from_taxi_data('tin_graph.txt' if choice and int(choice) == 2 else 'graph.txt')
 
-    # 可视化网络
-    tin.visualize()
+    choice = input("\nDo you want to generate an image for the network?(Bad performance for massive graph)\n[Y/(n)]=>")
+    if choice == 'Y':
+        # 可视化网络
+        tin.visualize()
 
     # 询问用户选择数据追踪策略
     print("\nTrack provenance using which policy:")
-    print("1. LRB (Least Recently Born)")
+    print("1. LRB (Least Recently Born) <DEFAULT>")
     print("2. MRB (Most Recently Born)")
 
-    choice = input("1 or 2: ").strip()
-    policy = PROVENANCE_POLICIES[int(choice) - 1]  # 修正索引从1开始
+    choice = input("(1) or 2: ").strip()
+    idx = int(choice) if choice else 1
+    policy = PROVENANCE_POLICIES[idx - 1]  # 修正索引从1开始
 
     # 输出统计信息
     stats = tin.get_statistics()
@@ -496,12 +500,13 @@ if __name__ == "__main__":
     provenance_stats, buffer_string = tin.analyze_provenance(provenance_buffer)
 
     # 显示结果
-    print(f"\n{policy.upper()} strategy sources:")
+    print(f"\n{policy.upper()} strategy sources for vertex {target_node if target_node else 'ALL'}:")
     if provenance_stats:
         for i, (origin, quantity) in enumerate(sorted(provenance_stats.items(), key=lambda x: x[1], reverse=True)[:10]):
             print(f"{i + 1}. Node {origin}: {quantity:.2f} units")
-
-    # 显示缓冲区内容
-    print(buffer_string)
+        print(f"Buffer of vertex {target_node}:" + buffer_string)
+    else:
+        # 显示缓冲区内容
+        print(buffer_string)
 
     print("\nDone!")
