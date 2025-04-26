@@ -4,6 +4,9 @@ from collections import defaultdict
 import os
 import time as t
 import random
+import numpy as np
+import heapq
+import copy
 
 class TemporalInteractionNetwork:
     def __init__(self):
@@ -67,9 +70,9 @@ class TemporalInteractionNetwork:
             taxi_data_path: 出租车数据文件路径
         """
         # 如果预处理后的文件已存在，则直接加载
-        if os.path.exists('tin_graph.txt'):
+        if os.path.exists('graph.txt'):
             print("Existing file found.")
-            self.load_from_file('tin_graph.txt')
+            self.load_from_file('graph.txt')
             return
         
         import subprocess
@@ -94,226 +97,325 @@ class TemporalInteractionNetwork:
             "Avg_pax": avg_passengers
         }
         return stats
+
     
-    def find_repeating_patterns(self, time_window=3600, sample_size=None):
-        """查找重复模式
-        
-        参数:
-            time_window: 时间窗口大小（秒）
-            sample_size: 用于分析的样本大小，None表示使用全部数据
-        返回:
-            重复模式字典
-        """
-        print(f"查找重复模式 (时间窗口: {time_window}秒)...")
-        start_time = t.time()
-        
-        # 如果数据很大，可以选择采样
-        interactions_to_analyze = self.interactions
-        if sample_size and sample_size < len(self.interactions):
-            print(f"数据量较大，使用 {sample_size} 个随机样本进行分析")
-            interactions_to_analyze = random.sample(self.interactions, sample_size)
-        
-        patterns = defaultdict(list)
-        
-        # 对交互按时间排序
-        sorted_interactions = sorted(interactions_to_analyze, key=lambda x: x[2])
-        
-        # 查找在时间窗口内重复的边
-        for source, dest, time, flow in sorted_interactions:
-            edge = (source, dest)
-            patterns[edge].append((time, flow))
-        
-        # 过滤出重复出现的模式
-        repeating_patterns = {edge: times for edge, times in patterns.items() if len(times) > 1}
-        
-        # 进一步分析时间窗口内的重复
-        time_window_patterns = {}
-        pattern_count = 0
-        
-        for edge, times in repeating_patterns.items():
-            windows = []
-            current_window = [times[0]]
-            
-            for i in range(1, len(times)):
-                if times[i][0] - current_window[-1][0] <= time_window:
-                    current_window.append(times[i])
-                else:
-                    if len(current_window) > 1:
-                        windows.append(current_window)
-                    current_window = [times[i]]
-            
-            if len(current_window) > 1:
-                windows.append(current_window)
-            
-            if windows:
-                time_window_patterns[edge] = windows
-                pattern_count += len(windows)
-        
-        end_time = time.time()
-        print(f"模式识别完成。耗时: {end_time - start_time:.2f} 秒")
-        print(f"在 {len(repeating_patterns)} 条边中找到 {pattern_count} 个重复模式")
-        
-        return time_window_patterns
-    
-    def track_quantity_provenance(self, target_node, time_limit=None, sample_size=None):
-        """追踪在网络中转移的数量来源
-        
-        参数:
-            target_node: 目标节点
-            time_limit: 可选的时间限制
-            sample_size: 分析的样本大小
-        返回:
-            源节点及其贡献的字典
-        """
-        print(f"追踪到节点 {target_node} 的数量来源...")
-        start_time = t.time()
-        
-        # 如果数据很大，可以选择采样
-        interactions_to_analyze = self.interactions
-        if sample_size and sample_size < len(self.interactions):
-            print(f"数据量较大，使用 {sample_size} 个随机样本进行分析")
-            interactions_to_analyze = random.sample(self.interactions, sample_size)
-        
-        # 按时间排序交互
-        sorted_interactions = sorted(interactions_to_analyze, key=lambda x: x[2])
-        
-        # 用于存储每个节点当前的数量
-        node_quantities = defaultdict(int)
-        
-        # 用于追踪数量的来源
-        provenance = defaultdict(lambda: defaultdict(int))
-        
-        # 处理所有交互
-        for source, dest, time, flow in sorted_interactions:
-            if time_limit and time > time_limit:
-                break
-                
-            if flow > 0:
-                # 更新目标节点接收的数量
-                node_quantities[dest] += flow
-                
-                # 如果源节点有数量，则认为这是直接传输
-                provenance[dest][source] += flow
-                
-                # 如果这是流向我们关注的目标节点的交互
-                if dest == target_node:
-                    # 已经在provenance中记录了source的贡献
-                    pass
-        
-        end_time = time.time()
-        print(f"来源追踪完成。耗时: {end_time - start_time:.2f} 秒")
-        
-        # 返回与目标节点相关的来源
-        result = dict(provenance[target_node])
-        print(f"找到 {len(result)} 个来源节点")
-        
-        return result
-    
-    def visualize(self, with_weights=True, max_edges=1000, output_file='tin_network.png'):
+    def visualize(self, with_interactions=True, max_edges=1000, output_file='tin_network.png'):
         """可视化TIN网络
         
         参数:
-            with_weights: 是否显示边的权重
+            with_interactions: 是否显示边的交互数量
             max_edges: 可视化的最大边数
             output_file: 输出图像文件名
         """
-        print("准备可视化网络...")
+        print("\nPreparing to visualize network...")
         start_time = t.time()
         
-        # 创建一个新图，边的权重为交互次数
-        G = nx.DiGraph()
+        # 直接使用self.graph
+        G = self.graph.copy()
         
-        # 计算边权重
-        edge_weights = defaultdict(int)
-        for source, dest, _, flow in self.interactions:
-            edge_weights[(source, dest)] += flow
-        
-        # 如果边数过多，选择权重最高的边
-        if len(edge_weights) > max_edges:
-            print(f"边数 ({len(edge_weights)}) 超过最大限制 ({max_edges})，选择权重最高的边")
-            edge_weights = dict(sorted(edge_weights.items(), key=lambda x: x[1], reverse=True)[:max_edges])
-        
-        # 添加边和节点到图
-        for (source, dest), weight in edge_weights.items():
-            G.add_edge(source, dest, weight=weight)
+        # 如果边数过多，选择最重要的边
+        if G.number_of_edges() > max_edges:
+            print(f"Edges ({G.number_of_edges()}) exceed max limit ({max_edges}), select edges with more interactions.")
+            
+            # 计算每条边的交互次数作为重要性指标
+            edge_importance = {}
+            for u, v, data in G.edges(data=True):
+                interactions = data.get('interactions', [])
+                edge_importance[(u, v)] = len(interactions)
+            
+            # 选择交互次数最多的边
+            important_edges = sorted(edge_importance.items(), key=lambda x: x[1], reverse=True)[:max_edges]
+            
+            # 创建一个新图，只包含重要的边
+            important_G = nx.DiGraph()
+            for (u, v), _ in important_edges:
+                important_G.add_edge(u, v, **G[u][v])
+            
+            G = important_G
         
         # 获取实际使用的节点
-        nodes_to_draw = set()
-        for source, dest in G.edges():
-            nodes_to_draw.add(source)
-            nodes_to_draw.add(dest)
+        nodes_to_draw = set(G.nodes())
         
-        print(f"可视化 {len(nodes_to_draw)} 个节点和 {len(G.edges())} 条边")
+        print(f"Visualizing {len(nodes_to_draw)} nodes and {G.number_of_edges()} edges")
         
         # 绘制图
         plt.figure(figsize=(16, 12))
         
         # 使用spring布局
-        print("计算节点布局...")
-        pos = nx.spring_layout(G, k=0.3, iterations=50)
+        print("Computing node layout...")
+        pos = nx.spring_layout(G, k=0.1, iterations=50)
         
         # 绘制节点
-        print("绘制节点...")
-        nx.draw_networkx_nodes(G, pos, node_size=600, node_color='lightblue', alpha=0.8)
+        print("Drawing nodes...")
+        nx.draw_networkx_nodes(G, pos, node_size=600, node_color='lightblue', alpha=1.0)
         
-        # 绘制边，边的宽度与权重成正比
-        print("绘制边...")
-        if with_weights:
-            # 归一化边权重，使其在可视范围内
-            max_weight = max(G[u][v]['weight'] for u, v in G.edges())
-            min_width, max_width = 0.5, 5.0
+        # 绘制边
+        print("Drawing edges...")
+        if with_interactions:
+            # 为每条边设置宽度，基于交互次数
+            edge_widths = []
+            for u, v in G.edges():
+                interactions = G[u][v].get('interactions', [])
+                edge_widths.append(len(interactions))
             
-            edge_width = [min_width + (G[u][v]['weight'] / max_weight) * (max_width - min_width) 
-                          for u, v in G.edges()]
-            nx.draw_networkx_edges(G, pos, width=edge_width, alpha=0.6, edge_color='gray', 
-                                 arrowsize=15, connectionstyle='arc3,rad=0.1')
+            # 归一化边宽度
+            if edge_widths:
+                max_interactions = max(edge_widths) if edge_widths else 1
+                min_width, max_width = 0.5, 5.0
+                normalized_widths = [min_width + (count / max_interactions) * (max_width - min_width) if max_interactions > 0 else min_width for count in edge_widths]
+                
+                # 检测相互连接的边并使用不同的弧度
+                mutual_edges = {}
+                for u, v in G.edges():
+                    if G.has_edge(v, u):  # 如果存在相反方向的边
+                        if (v, u) not in mutual_edges:  # 避免重复处理
+                            mutual_edges[(u, v)] = 0.3  # 正向边使用正弧度
+                            mutual_edges[(v, u)] = 0.3  # 反向边使用正弧度
+                
+                # 绘制边，为相互连接的边使用特定的弧度
+                edge_list = list(G.edges())
+                for i, (u, v) in enumerate(edge_list):
+                    rad = mutual_edges.get((u, v), 0.1)  # 默认弧度为0.1
+                    nx.draw_networkx_edges(G, pos, edgelist=[(u, v)], width=normalized_widths[i], 
+                                         alpha=0.6, edge_color='gray', arrowsize=15, 
+                                         connectionstyle=f'arc3,rad={rad}')
+            else:
+                nx.draw_networkx_edges(G, pos, alpha=0.6, edge_color='gray', 
+                                     arrowsize=15, connectionstyle='arc3,rad=0.1')
         else:
-            nx.draw_networkx_edges(G, pos, alpha=0.6, edge_color='gray', 
-                                 arrowsize=15, connectionstyle='arc3,rad=0.1')
+            # 检测相互连接的边并使用不同的弧度
+            mutual_edges = {}
+            for u, v in G.edges():
+                if G.has_edge(v, u):  # 如果存在相反方向的边
+                    if (v, u) not in mutual_edges:  # 避免重复处理
+                        mutual_edges[(u, v)] = 0.3  # 正向边使用正弧度
+                        mutual_edges[(v, u)] = 0.3  # 反向边使用正弧度
+            
+            # 使用不同的弧度绘制边
+            for u, v in G.edges():
+                rad = mutual_edges.get((u, v), 0.1)  # 默认弧度为0.1
+                nx.draw_networkx_edges(G, pos, edgelist=[(u, v)], alpha=0.6, edge_color='gray', 
+                                     arrowsize=15, connectionstyle=f'arc3,rad={rad}')
         
         # 绘制节点标签
-        print("绘制节点标签...")
+        print("Drawing node labels...")
         # 如果节点太多，只显示部分节点标签
         if len(nodes_to_draw) > 50:
-            print("节点太多，只显示部分节点标签")
+            print("Too many nodes, displaying only some labels")
             # 选择度最高的节点显示标签
             nodes_with_labels = sorted(G.degree, key=lambda x: x[1], reverse=True)[:50]
             labels = {node: str(node) for node, _ in nodes_with_labels}
-            nx.draw_networkx_labels(G, pos, labels=labels, font_size=10, font_family='sans-serif')
+            nx.draw_networkx_labels(G, pos, labels=labels, font_size=10, font_family='sans-serif', verticalalignment='baseline')
         else:
-            nx.draw_networkx_labels(G, pos, font_size=10, font_family='sans-serif')
+            nx.draw_networkx_labels(G, pos, font_size=10, font_family='sans-serif', verticalalignment='baseline')
         
-        # 如果边不太多并且需要显示权重，显示边标签
-        if len(G.edges()) < 50 and with_weights:
-            print("绘制边标签...")
-            edge_labels = {(u, v): f"{G[u][v]['weight']}" for u, v in G.edges()}
-            nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=8)
+        # 如果边不太多，显示边上的interactions
+        if G.number_of_edges() < 100:  # 减少显示标签的边数，因为交互列表可能很长
+            print("Drawing interactions on edges...")
+            edge_labels = {}
+            for u, v in G.edges():
+                interactions = G[u][v].get('interactions', [])
+                # 限制显示的交互数量，最多显示3个
+                display_interactions = interactions[:3]
+                if interactions:
+                    label = ""
+                    for i, (time, flow) in enumerate(display_interactions):
+                        label += f"({time},{flow})"
+                        if i < len(display_interactions) - 1:
+                            label += ", "
+                    if len(interactions) > 3:
+                        label += f"... +{len(interactions)-3} more"
+                    edge_labels[(u, v)] = label
+            
+            # 绘制边标签，使用自定义位置
+            nx.draw_networkx_edge_labels(
+                G, pos, 
+                edge_labels=edge_labels,
+                label_pos=0.2,
+                font_size=8, 
+                font_weight='bold')
         
-        plt.title('时间交互网络')
+        plt.title('Temporal Interaction Network')
         plt.axis('off')
         plt.tight_layout()
         
         # 保存图像
-        print(f"保存图像到 {output_file}...")
+        print(f"Saving image to {output_file}...")
         plt.savefig(output_file, dpi=300, bbox_inches='tight')
         
         end_time = t.time()
-        print(f"可视化完成。耗时: {end_time - start_time:.2f} 秒")
+        print(f"Visualization completed. Time elapsed: {end_time - start_time:.2f} seconds")
+    
+    def track_provenance_lrb(self, target_node=None):
+        """
+        使用最旧优先(Least Recently Born, LRB)策略追踪数据来源
+        
+        参数:
+            target_node: 目标节点，如果为None则追踪所有节点
+            
+        返回:
+            节点的数据量缓冲区字典
+        """
+        print("使用LRB策略追踪数据来源...")
+        start_time = t.time()
+        
+        # 按时间排序所有交互
+        sorted_interactions = sorted(self.interactions, key=lambda x: x[2])
+        
+        # 初始化每个节点的缓冲区 (最小堆，按时间排序)
+        buffers = {node: [] for node in self.nodes}
+        
+        # 处理所有交互
+        for i, (source, dest, time, quantity) in enumerate(sorted_interactions):
+            if i % 100000 == 0 and i > 0:
+                print(f"已处理 {i} 个交互...")
+            
+            # 剩余需要转移的数据量
+            remaining_quantity = quantity
+            
+            # 当有剩余数据量且源节点缓冲区非空时，继续处理
+            while remaining_quantity > 0 and buffers[source]:
+                # 获取最早生成的三元组（不弹出）
+                oldest_triple = buffers[source][0]
+                origin, birth_time, avail_quantity = oldest_triple
+                
+                if avail_quantity > remaining_quantity:
+                    # 分割三元组
+                    # 更新源节点中的三元组
+                    heapq.heapreplace(buffers[source], (origin, birth_time, avail_quantity - remaining_quantity))
+                    # 添加到目标节点
+                    heapq.heappush(buffers[dest], (origin, birth_time, remaining_quantity))
+                    remaining_quantity = 0
+                else:
+                    # 移除整个三元组
+                    heapq.heappop(buffers[source])
+                    # 添加到目标节点
+                    heapq.heappush(buffers[dest], (origin, birth_time, avail_quantity))
+                    remaining_quantity -= avail_quantity
+            
+            # 如果还有剩余数据量，生成新的三元组
+            if remaining_quantity > 0:
+                heapq.heappush(buffers[dest], (source, time, remaining_quantity))
+        
+        end_time = t.time()
+        print(f"数据来源追踪完成，耗时: {end_time - start_time:.2f} 秒")
+        
+        # 如果指定了目标节点，只返回该节点的缓冲区
+        if target_node is not None:
+            if target_node in buffers:
+                result = buffers[target_node]
+                print(f"节点 {target_node} 的缓冲区包含 {len(result)} 个三元组")
+                return result
+            else:
+                print(f"节点 {target_node} 不存在")
+                return []
+        
+        return buffers
+    
+    def track_provenance_mrb(self, target_node=None):
+        """
+        使用最新优先(Most Recently Born, MRB)策略追踪数据来源
+        
+        参数:
+            target_node: 目标节点，如果为None则追踪所有节点
+            
+        返回:
+            节点的数据量缓冲区字典
+        """
+        print("使用MRB策略追踪数据来源...")
+        start_time = t.time()
+        
+        # 按时间排序所有交互
+        sorted_interactions = sorted(self.interactions, key=lambda x: x[2])
+        
+        # 初始化每个节点的缓冲区
+        # 对于MRB，我们使用最大堆，但heapq是最小堆，所以存储负的时间戳
+        buffers = {node: [] for node in self.nodes}
+        
+        # 处理所有交互
+        for i, (source, dest, time, quantity) in enumerate(sorted_interactions):
+            if i % 100000 == 0 and i > 0:
+                print(f"已处理 {i} 个交互...")
+            
+            # 剩余需要转移的数据量
+            remaining_quantity = quantity
+            
+            # 当有剩余数据量且源节点缓冲区非空时，继续处理
+            while remaining_quantity > 0 and buffers[source]:
+                # 获取最新生成的三元组（不弹出）
+                # 注意：存储的是(-birth_time, origin, avail_quantity)
+                newest_triple = buffers[source][0]
+                neg_birth_time, origin, avail_quantity = newest_triple
+                birth_time = -neg_birth_time  # 还原实际时间
+                
+                if avail_quantity > remaining_quantity:
+                    # 分割三元组
+                    # 更新源节点中的三元组
+                    heapq.heapreplace(buffers[source], (neg_birth_time, origin, avail_quantity - remaining_quantity))
+                    # 添加到目标节点
+                    heapq.heappush(buffers[dest], (neg_birth_time, origin, remaining_quantity))
+                    remaining_quantity = 0
+                else:
+                    # 移除整个三元组
+                    heapq.heappop(buffers[source])
+                    # 添加到目标节点
+                    heapq.heappush(buffers[dest], (neg_birth_time, origin, avail_quantity))
+                    remaining_quantity -= avail_quantity
+            
+            # 如果还有剩余数据量，生成新的三元组
+            if remaining_quantity > 0:
+                heapq.heappush(buffers[dest], (-time, source, remaining_quantity))  # 注意负时间
+        
+        end_time = t.time()
+        print(f"数据来源追踪完成，耗时: {end_time - start_time:.2f} 秒")
+        
+        # 如果指定了目标节点，只返回该节点的缓冲区
+        if target_node is not None:
+            if target_node in buffers:
+                # 转换结果，使时间为正值
+                result = [(origin, -neg_time, quantity) for neg_time, origin, quantity in buffers[target_node]]
+                print(f"节点 {target_node} 的缓冲区包含 {len(result)} 个三元组")
+                return result
+            else:
+                print(f"节点 {target_node} 不存在")
+                return []
+        
+        # 转换所有结果，使时间为正值
+        converted_buffers = {}
+        for node, buffer in buffers.items():
+            converted_buffers[node] = [(origin, -neg_time, quantity) for neg_time, origin, quantity in buffer]
+        
+        return converted_buffers
+    
+    def analyze_provenance(self, buffer, k=10):
+        """
+        分析追踪结果，返回数据来源统计
+        
+        参数:
+            buffer: 缓冲区（三元组列表）
+            k: 返回前k个来源
+            
+        返回:
+            节点及其贡献的字典，按贡献降序排序
+        """
+        if not buffer:
+            return {}
+        
+        # 统计每个来源的贡献量
+        origin_stats = defaultdict(float)
+        for origin, _, quantity in buffer:
+            origin_stats[origin] += quantity
+            
+        # 按贡献量降序排序
+        sorted_stats = sorted(origin_stats.items(), key=lambda x: x[1], reverse=True)
+        
+        # 返回前k个来源
+        return dict(sorted_stats[:k])
 
 
 if __name__ == "__main__":
     # 创建TIN实例
     tin = TemporalInteractionNetwork()
-    
-    # # 从出租车数据创建TIN
-    # # 参数process_all=True表示处理全部数据，False表示仅处理前100,000条
-    # print("您希望处理全部数据还是仅处理部分数据?")
-    # print("1. 处理全部数据 (可能需要较长时间)")
-    # print("2. 只处理前100,000条数据 (更快)")
-    #
-    # choice = input("请输入选项 (1 或 2): ").strip()
-    # process_all = (choice == '1')
-    
     tin.create_from_taxi_data('yellow_taxi.csv')
     
     # 输出统计信息
@@ -322,38 +424,37 @@ if __name__ == "__main__":
     for key, value in stats.items():
         print(f"{key}: {value:.2f}" if isinstance(value, float) else f"{key}: {value}")
 
-    raise NotImplementedError("Following processes not verified, terminating.")
-    # 查找重复模式
-    # 如果数据量很大，可以用采样来加快处理速度
-    sample_size = 1000000 if len(tin.interactions) > 1000000 else None
-    print("\n寻找重复模式...")
-    patterns = tin.find_repeating_patterns(sample_size=sample_size)
-    
-    # 输出部分重复模式示例
-    if patterns:
-        print("\n重复模式示例（最多5个）:")
-        for i, (edge, windows) in enumerate(list(patterns.items())[:5]):
-            print(f"模式 {i+1}: {edge}出现在以下时间窗口中:")
-            for j, window in enumerate(windows[:3]):  # 每个模式最多显示3个窗口
-                print(f"  窗口 {j+1}: {len(window)}次交互，时间范围: {window[0][0]}-{window[-1][0]}")
-    
-    # 追踪来源示例
-    if tin.nodes:
-        target_node = random.choice(list(tin.nodes))
-        print(f"\n追踪示例: 追踪到节点 {target_node} 的数量来源")
-        
-        # 对于大数据集，使用采样
-        sample_size = 1000000 if len(tin.interactions) > 1000000 else None
-        sources = tin.track_quantity_provenance(target_node, sample_size=sample_size)
-        
-        # 显示前10个主要来源
-        top_sources = sorted(sources.items(), key=lambda x: x[1], reverse=True)[:10]
-        print("\n前10个主要来源:")
-        for source, amount in top_sources:
-            print(f"节点 {source}: {amount} 单位")
-    
-    # 可视化网络
-    print("\nVisualizing (part of) the network...")
-    tin.visualize(max_edges=500)  # 限制最大显示的边数
-    
-    print("\nDone!")
+    tin.visualize()
+    # # 随机选择一个目标节点
+    # target_node = random.choice(list(tin.nodes))
+    # print(f"\n随机选择的目标节点: {target_node}")
+    #
+    # # 使用LRB策略追踪数据来源
+    # print("\n使用LRB策略（最旧优先）追踪数据来源...")
+    # lrb_buffer = tin.track_provenance_lrb(target_node)
+    # lrb_stats = tin.analyze_provenance(lrb_buffer)
+    #
+    # # 显示LRB结果
+    # print("\nLRB策略（最旧优先）前10个来源:")
+    # for origin, quantity in sorted(lrb_stats.items(), key=lambda x: x[1], reverse=True)[:10]:
+    #     print(f"节点 {origin}: {quantity:.2f} 单位")
+    #
+    # # 可视化LRB结果
+    # tin.visualize_provenance(lrb_stats, title=f"LRB策略（最旧优先）- 节点{target_node}的数据来源",
+    #                         output_file=f"provenance_lrb_{target_node}.png")
+    #
+    # # 使用MRB策略追踪数据来源
+    # print("\n使用MRB策略（最新优先）追踪数据来源...")
+    # mrb_buffer = tin.track_provenance_mrb(target_node)
+    # mrb_stats = tin.analyze_provenance(mrb_buffer)
+    #
+    # # 显示MRB结果
+    # print("\nMRB策略（最新优先）前10个来源:")
+    # for origin, quantity in sorted(mrb_stats.items(), key=lambda x: x[1], reverse=True)[:10]:
+    #     print(f"节点 {origin}: {quantity:.2f} 单位")
+    #
+    # # 可视化MRB结果
+    # tin.visualize_provenance(mrb_stats, title=f"MRB策略（最新优先）- 节点{target_node}的数据来源",
+    #                         output_file=f"provenance_mrb_{target_node}.png")
+    #
+    # print("\n完成!")
