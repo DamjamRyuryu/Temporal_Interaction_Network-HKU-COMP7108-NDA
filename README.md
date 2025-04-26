@@ -1,51 +1,73 @@
-# 时间交互网络 (Temporal Interaction Network)
+# Temporal Interaction Network (TIN)
 
-（HKU COMP7108作业）本项目实现了时间交互网络(TIN)的创建、分析和可视化。TIN是一种网络，其中边上标注了节点间交互发生的时间以及转移的数量。
+(Assignment of HKU-COMP7108)This project implements creation, analysis, and visualization of Temporal Interaction Networks (TIN). A TIN is a network where edges are annotated with the time of interaction between nodes and the quantity transferred.
 
-## 功能
+## Features
 
-本项目包含以下功能：
+The project includes the following features:
 
-1. **创建时间交互网络**：从出租车数据中提取必要的字段并构建TIN
-2. **统计分析**：计算网络节点数、边数、交互数以及每次行程的平均乘客数
-3. **重复模式识别**：识别网络中的重复交互模式（motifs）
-4. **数量来源追踪**：追踪网络中转移数量的来源
-5. **网络可视化**：可视化TIN网络结构
+1. **TIN Creation**: Extract necessary fields from taxi data or load from pre-processed data
+2. **Statistical Analysis**: Calculate network metrics such as number of nodes, edges, interactions, and average passengers per trip
+3. **Data Provenance Tracking**: Track the origin of data quantities in the network using different strategies:
+   - LRB (Least Recently Born): Prioritizes oldest data first
+   - MRB (Most Recently Born): Prioritizes newest data first
+4. **Temporal Analysis**: Analyze data flow at specific timestamps
+5. **Network Visualization**: Visualize the TIN network structure with interactive edges and nodes
 
-## 文件说明
+## Files Description
 
-- `TIN.py`: 主程序，实现TIN类及其功能
-- `preprocess_taxi_data.py`: 数据预处理脚本，处理原始出租车数据
-- `requirements.txt`: 项目依赖包列表
-- `yellow_taxi.csv`: 原始数据文件（800MB+，未包含在仓库中*）
-- `tin_graph.txt`: 处理后的TIN数据文件（程序自动生成，100万条edge）
-- `tin_network.png`: 网络可视化图像（程序自动生成）
+- `TIN.py`: Main program that implements the TIN class and its functionalities
+- `preprocess_taxi_data.py`: Data preprocessing script for raw taxi data
+- `requirements.txt`: List of project dependencies
+- `yellow_taxi.csv`: Original data file (800MB+, not included in repository*)
+- `tin_graph.txt`: Processed TIN data file (automatically generated, limited to 1 million edges)
+- `graph.txt`: Small test file for development and testing
 
-*：https://drive.google.com/file/d/1D9gVR-FJtItIN82JD5-E__nHTAu8-beH/view
 
-## 安装与使用
+*: Might be available at https://drive.google.com/file/d/1D9gVR-FJtItIN82JD5-E__nHTAu8-beH/view
 
-1. 安装依赖项：
+## Installation and Usage
+
+1. Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-2. 运行程序：
+2. Run the program:
 
 ```bash
 python TIN.py
 ```
 
-[//]: # (注意：程序会自动处理数据并生成TIN网络，首次运行可能需要较长时间。)
+## Implementation Details
 
-## 实现细节
+### Data Structure
+- Nodes represent location IDs, edges represent trips between locations
+- Interactions include source, destination, timestamp, and quantity information
+- The program can process both the full dataset or a smaller test file
 
-- 预处理脚本会处理CSV文件的前100,000条记录（根据时间排序）以提高效率
-- TIN网络将地点ID作为节点，行程作为交互
-- 重复模式识别使用时间窗口（默认1小时）来识别频繁发生的交互
-- 可视化结果会自动保存为PNG图像
+### Provenance Tracking
+The program implements two strategies for tracking data provenance:
 
-## 数据格式
+1. **LRB (Least Recently Born)**: In this strategy, data flows based on its creation time, with oldest data transferred first. This approach uses a minimum heap sorted by timestamp.
 
-TIN数据存储为制表符分隔的文本文件，格式为：`源节点 目标节点 时间 流量`， 开头两行分别为顶点数和边数
+2. **MRB (Most Recently Born)**: This strategy prioritizes the newest data, transferring most recently generated data first. This is implemented using a maximum heap (inverted minimum heap).
+
+Both strategies track where each unit of quantity originated from, allowing analysis of data flow patterns in the network.
+
+### User Interface
+The program offers an interactive command-line interface that allows users to:
+- Select which dataset to use (test file or taxi data)
+- Choose whether to visualize the network
+- Select the provenance tracking strategy (LRB or MRB)
+- Specify a target node or analyze all nodes
+- Set a timestamp limit for analysis
+
+## Data Format
+
+TIN data is stored as a tab-separated text file with the format: `source_node destination_node timestamp flow_quantity`. The first two lines specify the number of vertices and edges respectively.
+
+## References
+
+[1]	C. K. N. Mamoulis, "Provenance in Temporal Interaction Networks," 2021, doi: 10.48550/arxiv.2110.05041.
