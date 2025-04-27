@@ -1,10 +1,10 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 from collections import defaultdict
+from preprocess_taxi_data import preprocess_taxi_data
 import os
 import time as t
 import random
-import numpy as np
 import heapq
 import copy
 
@@ -78,9 +78,10 @@ class TemporalInteractionNetwork:
             self.load_from_file(graph_data)
             return
 
-        import subprocess
+        choice = input("\nNo pre-generated file, process the taxi data" +
+                       "\nDo you want to use limited (1 million) interactions? (otherwise use All interactions)\n[(Y)/n]=>")
         print("Preprocessing data...")
-        subprocess.run(['python', 'preprocess_taxi_data.py'])
+        preprocess_taxi_data(limited=False if choice.lower() == 'n' else True)
 
         # 加载预处理后的数据
         self.load_from_file('tin_graph.txt')
@@ -434,7 +435,7 @@ if __name__ == "__main__":
     tin.create_from_taxi_data('tin_graph.txt' if choice and int(choice) == 2 else 'graph.txt')
 
     choice = input("\nDo you want to generate an image for the network?(Bad performance for massive graph)\n[Y/(n)]=>")
-    if choice == 'Y':
+    if choice.lower() == 'y':
         # 可视化网络
         tin.visualize()
 
